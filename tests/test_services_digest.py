@@ -182,3 +182,89 @@ def test_digest_includes_next_due_payment(db, user_id, monkeypatch):
     digest.send_digest(db, user_id, TODAY, transport=_mock_client(handler))
     assert "Rent" in captured["body"]["text"]
     assert "$900.00" in captured["body"]["text"]
+
+
+def test_digest_sends_theme_matched_html_alongside_text(db, user_id, monkeypatch):
+    """The HTML body mirrors the plain-text content (same sections, same figures)
+    and carries the app's own dark palette so it reads as the same product."""
+    monkeypatch.setattr(config, "RESEND_API_KEY", "test-key")
+    accounts_repo.create_account(db, user_id, "Checking", "checking", 100000)
+    settings_repo.upsert(db, user_id, "digest_email", "alice@example.com")
+    db.commit()
+
+    captured = {}
+
+    def handler(request):
+        import json
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"id": "abc"})
+
+    digest.send_digest(db, user_id, TODAY, transport=_mock_client(handler))
+
+    html = captured["body"]["html"]
+    text = captured["body"]["text"]
+    assert html.startswith("<!doctype html>")
+    assert "$1,000.00" in html
+    for heading in ("What happened", "Coming up", "Where you stand"):
+        assert heading in html
+        assert heading.upper() in text
+    # Same dark ground / accent-muted tokens app.css uses -- inlined, since email
+    # clients don't reliably honor stylesheets.
+    assert "#161826" in html and "#232532" in html
+    assert 'name="color-scheme" content="dark"' in html
+
+
+def test_digest_html_escapes_user_supplied_names(db, user_id, monkeypatch):
+    from app.repositories import obligations as obligations_repo
+
+    monkeypatch.setattr(config, "RESEND_API_KEY", "test-key")
+    accounts_repo.create_account(db, user_id, "Checking", "checking", 100000)
+    settings_repo.upsert(db, user_id, "digest_email", "alice@example.com")
+    obligations_repo.create_obligation(
+        db, user_id, "<b>Rent</b>", "housing", 90000, "2026-08-01"
+    )
+    db.commit()
+
+    captured = {}
+
+    def handler(request):
+        import json
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"id": "abc"})
+
+    digest.send_digest(db, user_id, TODAY, transport=_mock_client(handler))
+
+    assert "<b>Rent</b>" not in captured["body"]["html"]
+    assert "&lt;b&gt;Rent&lt;/b&gt;" in captured["body"]["html"]
+    assert "<b>Rent</b>" in captured["body"]["text"]
+
+
+def test_digest_html_declares_the_app_font_on_every_text_element(db, user_id, monkeypatch):
+    """Mail clients don't reliably inherit font-family from <body> through nested
+    tables, so every paragraph and cell carries the app's own stack explicitly,
+    leading with Roboto (what the app itself resolves to on Android)."""
+    import re
+
+    monkeypatch.setattr(config, "RESEND_API_KEY", "test-key")
+    accounts_repo.create_account(db, user_id, "Checking", "checking", 100000)
+    settings_repo.upsert(db, user_id, "digest_email", "alice@example.com")
+    db.commit()
+
+    captured = {}
+
+    def handler(request):
+        import json
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"id": "abc"})
+
+    digest.send_digest(db, user_id, TODAY, transport=_mock_client(handler))
+
+    html = captured["body"]["html"]
+    text_elements = re.findall(r"<(?:p|td|body)[^>]*>", html)
+    assert text_elements
+    assert all("font-family:Roboto," in tag for tag in text_elements)
+    # A double-quoted font name inside a double-quoted style attribute would end
+    # the attribute early and silently strip every declaration after it.
+    assert '"Segoe UI"' not in html
+    for tag in text_elements:
+        assert tag.count('"') % 2 == 0, tag

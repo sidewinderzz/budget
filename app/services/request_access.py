@@ -13,6 +13,7 @@ IP-based rate limiter every other unauthenticated route already uses.
 import httpx
 
 from app import config
+from app.services import email_theme
 
 _TIMEOUT = httpx.Timeout(10.0)
 
@@ -39,11 +40,20 @@ def send_request_access_notification(
         "",
         message or "(no message)",
     ]
+    html = email_theme.render(
+        "Someone requested access",
+        [
+            ("Who", [f"Name: {name or '(not given)'}", f"Email: {email or '(not given)'}"]),
+            ("Message", (message or "(no message)").splitlines() or ["(no message)"]),
+        ],
+        footer="Sent from the login page's request-access form. Add them from Settings → Users.",
+    )
     payload = {
         "from": config.DIGEST_FROM_EMAIL,
         "to": [config.REQUEST_ACCESS_TO_EMAIL],
         "subject": "Budget: someone requested access",
         "text": "\n".join(body_lines),
+        "html": html,
     }
 
     with httpx.Client(transport=transport, timeout=_TIMEOUT) as client:

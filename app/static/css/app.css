@@ -245,6 +245,11 @@ a:hover { text-decoration: underline; }
 .hero-stat__value--stale { color: var(--text-faint); }
 .dim-stale { opacity: 0.55; }
 .dim-first-run { opacity: 0.22; }
+/* First-run setup steps: an <ol> so the steps are semantically numbered, but the
+   browser's default markers rendered *outside* each card, indenting the whole
+   stack ~40px and doubling the "1." the card label already carries. The number
+   lives in the label text instead; the list chrome is stripped entirely. */
+.onboarding-steps { list-style: none; margin: 0; padding: 0; }
 .hero-stat__value--small { font-size: 1.5rem; font-weight: 700; }
 .sparkline { margin: var(--space-3) 0; }
 .sparkline svg { display: block; }

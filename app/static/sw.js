@@ -3,7 +3,7 @@
 // safe-to-spend figure must never be served stale, so no page content is ever
 // cached here. Bump CACHE_NAME on any deploy that changes files under /static/
 // so old clients don't keep serving a stale CSS/icon from a previous version.
-const CACHE_NAME = 'budget-static-v10';
+const CACHE_NAME = 'budget-static-v11';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
