@@ -15,7 +15,7 @@ from app.repositories import bank_sync as bank_sync_repo
 from app.repositories import settings as settings_repo
 from app.repositories import snapshots as snapshots_repo
 from app.repositories import transactions as transactions_repo
-from app.services import calc, narrative
+from app.services import calc, email_theme, narrative
 from app.services.dates import human_date
 
 _TIMEOUT = httpx.Timeout(10.0)
@@ -58,7 +58,9 @@ def _activity_summary(conn: sqlite3.Connection, user_id: int, today: date) -> li
     return lines
 
 
-def _body(conn: sqlite3.Connection, user_id: int, today: date) -> str:
+def _sections(conn: sqlite3.Connection, user_id: int, today: date) -> list[tuple[str, list[str]]]:
+    """The digest as (heading, lines) sections -- one source for both the plain-text
+    body and the themed HTML body, so the two can never say different things."""
     window_end = calc.reserved_window_end(conn, user_id, today)
     safe_to_spend_cents = calc.safe_to_spend(conn, user_id, today)
     cash_on_hand_cents = calc.cash_on_hand(conn, user_id)
@@ -67,34 +69,62 @@ def _body(conn: sqlite3.Connection, user_id: int, today: date) -> str:
     next_due = calc.next_due_payment(conn, user_id)
     change = narrative.build_change_narrative(conn, user_id, today)
 
-    lines = ["WHAT HAPPENED"]
+    happened: list[str] = []
     if change:
-        lines.append(change)
-    lines.extend(_activity_summary(conn, user_id, today))
+        happened.append(change)
+    happened.extend(_activity_summary(conn, user_id, today))
 
-    lines.append("")
-    lines.append("COMING UP")
+    coming_up: list[str] = []
     if next_due:
-        lines.append(
+        coming_up.append(
             f"{next_due['name']} ({next_due['kind']}) — "
             f"{format_cents(next_due['amount_cents'])} due {human_date(next_due['due_date'], today)}"
         )
     else:
-        lines.append("Nothing scheduled. If that's wrong, the app doesn't know about your bills yet.")
+        coming_up.append("Nothing scheduled. If that's wrong, the app doesn't know about your bills yet.")
 
     unmatched = len(bank_sync_repo.list_unmatched_transactions(conn, user_id))
     if unmatched:
         noun = "transaction" if unmatched == 1 else "transactions"
-        lines.append(f"{unmatched} bank {noun} waiting to be sorted (Money → Match Transactions).")
+        coming_up.append(f"{unmatched} bank {noun} waiting to be sorted (Money → Match Transactions).")
 
-    lines.append("")
-    lines.append("WHERE YOU STAND")
-    lines.append(f"Safe to spend: {format_cents(safe_to_spend_cents)}")
-    lines.append(f"Cash on hand: {format_cents(cash_on_hand_cents)}")
-    lines.append(f"Reserved (already spoken for): {format_cents(reserved_cash_cents)}")
-    lines.append(f"Total debt: {format_cents(total_debt_cents)}")
-    lines.append("Doesn't include future paychecks.")
+    standing = [
+        f"Safe to spend: {format_cents(safe_to_spend_cents)}",
+        f"Cash on hand: {format_cents(cash_on_hand_cents)}",
+        f"Reserved (already spoken for): {format_cents(reserved_cash_cents)}",
+        f"Total debt: {format_cents(total_debt_cents)}",
+        "Doesn't include future paychecks.",
+    ]
+
+    return [
+        ("What happened", happened),
+        ("Coming up", coming_up),
+        ("Where you stand", standing),
+    ]
+
+
+def _body(conn: sqlite3.Connection, user_id: int, today: date) -> str:
+    """Plain-text fallback; headings uppercased the way they always were."""
+    lines: list[str] = []
+    for heading, section_lines in _sections(conn, user_id, today):
+        if lines:
+            lines.append("")
+        lines.append(heading.upper())
+        lines.extend(section_lines)
     return "\n".join(lines)
+
+
+def _html(conn: sqlite3.Connection, user_id: int, today: date) -> str:
+    """Same content as _body, in the app's own dark theme (email_theme.py)."""
+    safe_to_spend_cents = calc.safe_to_spend(conn, user_id, today)
+    return email_theme.render(
+        "Budget",
+        _sections(conn, user_id, today),
+        hero_label="Safe to spend right now",
+        hero_value=format_cents(safe_to_spend_cents),
+        hero_tone="bad" if safe_to_spend_cents < 0 else "neutral",
+        footer=f"Daily digest for {today.strftime('%A, %B %d').replace(' 0', ' ')}. Doesn't include future paychecks.",
+    )
 
 
 def _subject(conn: sqlite3.Connection, user_id: int, today: date) -> str:
@@ -135,6 +165,7 @@ def send_digest(
         "to": [digest_email],
         "subject": _subject(conn, user_id, today),
         "text": _body(conn, user_id, today),
+        "html": _html(conn, user_id, today),
     }
 
     with httpx.Client(transport=transport, timeout=_TIMEOUT) as client:

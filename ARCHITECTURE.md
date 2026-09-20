@@ -275,6 +275,12 @@ dataclass layer — `sqlite3.Row` proved sufficient throughout, never added.
   one push (`last_bill_push_date` dedup marker per obligation).
 - `app/services/low_balance_alert.py` — hysteresis-gated low-safe-to-spend push: fires
   once on the drop below a user-set threshold, silently re-arms once recovered above it.
+- `app/services/email_theme.py` — the one HTML shell for outgoing mail (`digest.py`,
+  `request_access.py`). Same dark tokens as `app/static/css/app.css` (kept in sync by
+  hand, inlined per element because mail clients don't reliably honor stylesheets), every
+  user-supplied string HTML-escaped. Senders build one list of `(heading, lines)`
+  sections and derive *both* the plain-text fallback and the HTML body from it, so the
+  two can never disagree; Resend gets `text` + `html` in the same payload.
 - `app/crypto.py` — `Fernet` encrypt/decrypt, used for the SimpleFIN Access URL
   (`BANK_SYNC_ENCRYPTION_KEY`) and TOTP secrets (`TOTP_ENCRYPTION_KEY`, a distinct key
   so a leak of one doesn't expose the other). Keys read lazily inside `encrypt()`/
