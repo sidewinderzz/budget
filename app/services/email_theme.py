@@ -23,7 +23,15 @@ ACCENT = "#9184d9"
 GOOD = "#5fae8c"
 BAD = "#cf7f77"
 
-FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+# Same faces as app.css's body stack, but Roboto is promoted to the front: the
+# app itself resolves to Roboto on Android (where this app is actually used),
+# while mail clients there don't know -apple-system/BlinkMacSystemFont and some
+# (Gmail) skip past unknown names inconsistently rather than falling through.
+# Leading with the face that will actually match keeps the digest looking like
+# the app on the same phone. Single quotes around Segoe UI on purpose: every
+# style= attribute here is double-quoted, so a double-quoted font name would
+# close the attribute early and silently drop everything after it.
+FONT = "Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 
 
 def _section(heading: str, lines: list[str]) -> str:
@@ -34,7 +42,7 @@ def _section(heading: str, lines: list[str]) -> str:
         for line in lines
     )
     return (
-        '<tr><td style="padding:0 0 18px;">'
+        f'<tr><td style="font-family:{FONT};padding:0 0 18px;">'
         f'<p style="margin:0 0 6px;font-family:{FONT};font-size:12px;font-weight:700;letter-spacing:0.04em;'
         f'text-transform:uppercase;color:{TEXT_FAINT};">{escape(heading)}</p>'
         f"{items}"
@@ -60,10 +68,10 @@ def render(
     if hero_value is not None:
         color = {"good": GOOD, "bad": BAD}.get(hero_tone, TEXT)
         hero_html = (
-            '<tr><td style="padding:0 0 20px;">'
+            f'<tr><td style="font-family:{FONT};padding:0 0 20px;">'
             f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
             f'style="background:{BG_ELEVATED};border:1px solid {BORDER};border-radius:8px;">'
-            '<tr><td style="padding:18px 20px;">'
+            f'<tr><td style="font-family:{FONT};padding:18px 20px;">'
             f'<p style="margin:0 0 4px;font-family:{FONT};font-size:13px;font-weight:500;color:{TEXT_MUTED};">{escape(hero_label or "")}</p>'
             f'<p style="margin:0;font-family:{FONT};font-size:36px;font-weight:800;letter-spacing:-0.03em;line-height:1.1;color:{color};">{escape(hero_value)}</p>'
             "</td></tr></table></td></tr>"
@@ -71,7 +79,7 @@ def render(
 
     sections_html = "".join(_section(heading, lines) for heading, lines in sections)
     footer_html = (
-        f'<tr><td style="padding:14px 0 0;border-top:1px solid {BORDER};">'
+        f'<tr><td style="font-family:{FONT};padding:14px 0 0;border-top:1px solid {BORDER};">'
         f'<p style="margin:0;font-family:{FONT};font-size:12px;color:{TEXT_FAINT};">{escape(footer)}</p></td></tr>'
         if footer
         else ""
@@ -90,16 +98,16 @@ def render(
         "</head>"
         f'<body style="margin:0;padding:0;background:{BG};color:{TEXT};font-family:{FONT};">'
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{BG};">'
-        '<tr><td align="center" style="padding:24px 16px;">'
+        f'<tr><td align="center" style="font-family:{FONT};padding:24px 16px;">'
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">'
-        '<tr><td style="padding:0 0 16px;">'
+        f'<tr><td style="font-family:{FONT};padding:0 0 16px;">'
         f'<p style="margin:0;font-family:{FONT};font-size:20px;font-weight:700;color:{TEXT};">{escape(title)}</p>'
         "</td></tr>"
         f"{hero_html}"
-        "<tr><td>"
+        f'<tr><td style="font-family:{FONT};">'
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
         f'style="background:{BG_ELEVATED};border:1px solid {BORDER};border-radius:8px;">'
-        '<tr><td style="padding:18px 20px;">'
+        f'<tr><td style="font-family:{FONT};padding:18px 20px;">'
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
         f"{sections_html}{footer_html}"
         "</table></td></tr></table>"
